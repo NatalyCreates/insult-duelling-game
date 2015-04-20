@@ -12,16 +12,20 @@ public class FlashSign : MonoBehaviour {
 
 	}
 
+	void OnEnable() {
+
+	}
+
 	public void InitSign() {
-		InvokeRepeating("CallFlash", 3, 4);
+		InvokeRepeating("CallFlash", 3, 5);
 	}
 
 	void CallFlash() {
+		gameObject.GetComponent<AudioSource>().Play();
 		StartCoroutine(FlashingSign());
 	}
 
 	IEnumerator FlashingSign() {
-		gameObject.GetComponent<AudioSource>().Play();
 		gameObject.GetComponent<SpriteRenderer>().sprite = sign2;
 		yield return new WaitForSeconds(0.3f);
 		gameObject.GetComponent<SpriteRenderer>().sprite = sign3;

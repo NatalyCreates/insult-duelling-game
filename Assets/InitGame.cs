@@ -12,7 +12,7 @@ public class InitGame : MonoBehaviour {
 
 	bool isFirstUpdate = true;
 
-	public GameObject bg, rhino, idp, sign, playerWords, rhinoWords;
+	public GameObject bg, rhino, idp, sign, playerWords, rhinoWords, dialogImg;
 	public GameObject[] options;
 
 	DialogManager dialogMgr;
@@ -27,6 +27,7 @@ public class InitGame : MonoBehaviour {
 		// find all objects
 		rhinoWords = GameObject.Find("RhinoWords");
 		playerWords = GameObject.Find("PlayerWords");
+		dialogImg = GameObject.Find("DialogImg");
 
 		bg = GameObject.Find("Bg");
 		rhino = GameObject.Find("Rhino");
@@ -50,10 +51,19 @@ public class InitGame : MonoBehaviour {
 		options[3].SetActive(false);
 		options[4].SetActive(false);
 
-		rhino.SetActive(false);
-		bg.SetActive(false);
-		idp.SetActive(false);
-		sign.SetActive(false);
+		dialogImg.SetActive(false);
+
+		//rhino.SetActive(false);
+		//bg.SetActive(false);
+		//idp.SetActive(false);
+		//sign.SetActive(false);
+		rhino.GetComponent<SpriteRenderer>().enabled = false;
+		bg.GetComponent<SpriteRenderer>().enabled = false;
+		idp.GetComponent<SpriteRenderer>().enabled = false;
+		sign.GetComponent<SpriteRenderer>().enabled = false;
+
+		rhino.GetComponent<PolygonCollider2D>().enabled = false;
+		idp.GetComponent<PolygonCollider2D>().enabled = false;
 
 		// dialog manager
 		dialogMgr = gameObject.GetComponent<DialogManager>();

@@ -20,22 +20,26 @@ public class HotspotBehavior : MonoBehaviour {
 	// Functions for Hotspots
 	void OnMouseEnter() {
 		if (mainScript.hotspotsActive) {
+			//Debug.Log("Enter hostpot " + gameObject.name);
 			mainScript.SetCursorActive();
 		}
 	}
 
 	void OnMouseExit() {
 		if (mainScript.hotspotsActive) {
+			//Debug.Log("Exit hostpot " + gameObject.name);
 			mainScript.SetCursorInactive();
 		}
 	}
 
 	// Functions for Dialog UI
 	public void MouseEnter() {
+		//Debug.Log("Enter UI hostpot " + gameObject.name);
 		mainScript.SetCursorActive();
 	}
 	
 	public void MouseExit() {
+		//Debug.Log("Exit UI hostpot " + gameObject.name);
 		mainScript.SetCursorInactive();
 	}
 }

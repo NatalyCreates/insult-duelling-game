@@ -30,6 +30,7 @@ public class IDPBehavior : MonoBehaviour {
 			else {
 				dialogMgr.IDPDialog();
 			}
+			gameObject.GetComponent<AudioSource>().Play();
 		}
 	}
 

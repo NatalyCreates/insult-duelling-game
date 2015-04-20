@@ -9,21 +9,48 @@ public class DialogManager : MonoBehaviour {
 
 	InitGame mainScript;
 
-	Dictionary<int, InsultRetort> insultDict = new Dictionary<int, InsultRetort>();
+	public Dictionary<int, InsultRetort> insultDict = new Dictionary<int, InsultRetort>();
 
-	int numberOfInsults;
+	public int numberOfInsults;
 
-	List<int> knownRetorts = new List<int>();
-	List<int> knownInsults = new List<int>();
-
-	int randInt;
-
-	GameObject rhino, idp;
 	HotspotBehavior rhinoHotspot, idpHotspot;
 	RhinoBehavior rhinoBehave;
 	IDPBehavior idpBehave;
 
 	GameObject[] options;
+
+	public int currentInsultGivenByIdp = -1;
+	public bool modePlayerIsAsking = false;
+	public int chosenPlayerRetort = -1;
+
+	public int MAX_OPTIONS_TOTAL = 5;
+
+	// Game State
+
+	public List<int> knownRetorts = new List<int>();
+	public List<int> knownInsults = new List<int>();
+
+	public List<int> unknownInsults = new List<int>();
+
+	public struct GameState {
+		public bool modeIsPlayerAsking;
+		public bool askerIsRhino;
+		public int lastInsultGivenId;
+		//public int idpLastInsultGivenId;
+		//public int rhinoLastInsultGivenId;
+		public int playerLastInsultGivenId;
+		public int playerLastRetortGivenId;
+		public int numTimesBeatRhino;
+	}
+
+	public GameState myGameState;
+
+
+	GameObject menuBg, menuVicText, menuText, menuQuitButton, menuStartButton;
+
+	bool isMenuOn = false;
+	bool gameOver = false;
+	bool introPlaying = false;
 
 	// Use this for initialization
 	void Start () {
@@ -52,305 +79,740 @@ public class DialogManager : MonoBehaviour {
 		// count insult sets
 		numberOfInsults = insultDict.Keys.Count;
 
+		// init main script
 		mainScript = gameObject.GetComponent<InitGame>();
 
+		// init textboxes
 		rhinoWords = mainScript.rhinoWords;
 		playerWords = mainScript.playerWords;
 
-		//rhino = mainScript.rhino;
-		//idp = mainScript.idp;
-
+		// init options
 		options = new GameObject[5];
 		options = mainScript.options;
+
+		// init game state
+
+		myGameState.modeIsPlayerAsking = false;
+		myGameState.askerIsRhino = false;
+		myGameState.lastInsultGivenId = -1;
+		myGameState.playerLastRetortGivenId = -1;
+		myGameState.playerLastInsultGivenId = -1;
+
+		myGameState.numTimesBeatRhino = 0;
+
+		int i;
+		for (i = 1; i <= numberOfInsults; i++) {
+			// initially all insults are unknown
+			unknownInsults.Add(i);
+
+			// TODO - REMOVE THIS!!!
+			/* SHORTCUT - Jump straight to Rhino! */
+			//knownRetorts.Add(i);
+			/* END SHORTCUT */
+		}
+
+		/*
+		for (i = 0; i < unknownInsults.Count; i++) {
+			Debug.Log("unknownInsults[" + i + "] = " + unknownInsults[i]);
+		}
+		*/
+
+		// menu objects
+		menuBg = GameObject.Find("MenuImg");
+		menuVicText = GameObject.Find("WinText");
+		menuText = GameObject.Find("MenuText");
+		menuStartButton = GameObject.Find("ButtonNewGame");
+		menuQuitButton = GameObject.Find("ButtonQuit");
+
+		menuBg.SetActive(false);
+		menuVicText.SetActive(false);
+		menuText.SetActive(false);
+		menuStartButton.SetActive(false);
+		menuQuitButton.SetActive(false);
+
 	}
 	
 	// Update is called once per frame
 	void Update () {
-	
+		if (Input.GetKeyDown(KeyCode.Escape)) {
+			Application.Quit();
+		}
+		if (!gameOver) {
+			if ((Input.GetKeyDown(KeyCode.F1)) || (Input.GetKeyDown(KeyCode.M))) {
+				if (isMenuOn) {
+					isMenuOn = false;
+					if (introPlaying) {
+						// hide cursor
+						Cursor.visible = false;
+					}
+
+					// enable the right one
+					if (myGameState.askerIsRhino) {
+						mainScript.rhino.GetComponent<PolygonCollider2D>().enabled = true;
+					}
+					else {
+						mainScript.idp.GetComponent<PolygonCollider2D>().enabled = true;
+					}
+
+					menuBg.SetActive(false);
+					menuText.SetActive(false);
+					menuStartButton.SetActive(false);
+					menuQuitButton.SetActive(false);
+				}
+				else {
+					if (introPlaying) {
+						// show cursor
+						Cursor.visible = true;
+					}
+
+					isMenuOn = true;
+
+					// show menu, disable the rest
+
+					mainScript.rhino.GetComponent<PolygonCollider2D>().enabled = false;
+					mainScript.idp.GetComponent<PolygonCollider2D>().enabled = false;
+					
+					menuBg.SetActive(true);
+					menuText.SetActive(true);
+					menuStartButton.SetActive(true);
+					menuQuitButton.SetActive(true);
+
+				}
+			}
+		}
+	}
+
+
+	/* DIALOG OPTIONS */
+
+	void SetupRetortDialogOptions(int maxOptions) {
+		
+		int i = 0;
+		int j = 0;
+		
+		int correctAnswerPos;
+		int randOpt;
+		
+		List<int> usedAlready = new List<int>();
+
+		List<int> unused = new List<int>();
+		Debug.Log("adding " + knownRetorts.Count + " items to unused");
+		for (int k = 0; k < knownRetorts.Count; k++) {
+			unused.Add(knownRetorts[k]);
+			Debug.Log("item " + k);
+		}
+
+
+		// get the right response position (out of max 4, last option is always give up)
+		// do we even have the correct response available
+		if (knownRetorts.Contains(myGameState.lastInsultGivenId)) {
+			correctAnswerPos = Random.Range(0, maxOptions - 1);
+			usedAlready.Add(myGameState.lastInsultGivenId);
+			unused.Remove(myGameState.lastInsultGivenId);
+		}
+		else {
+			correctAnswerPos = -1;
+		}
+		//Debug.Log("correctAnswerPos = " + correctAnswerPos);
+
+		Debug.Log("SetupRetortDialogOptions: maxOptions = " + maxOptions);
+
+		while (i < maxOptions) {
+			Debug.Log("SetupRetortDialogOptions: in loop cycle " + i);
+			// infinite loop safety
+			j++;
+			if (j > 10) {
+				i = maxOptions;
+				break;
+			}
+
+			// put the default answer in the last place
+			if (i == maxOptions - 1) {
+				//Debug.Log("SetupRetortDialogOptions: setting option " + i + " = 'I give up.'");
+				options[i].GetComponent<Text>().text = "I give up.";
+				i++;
+			}
+
+			// place the correct answer
+			else if (i == correctAnswerPos) {
+				options[i].GetComponent<Text>().text = insultDict[myGameState.lastInsultGivenId].retort;
+				//Debug.Log("SetupRetortDialogOptions: setting option " + i + " = " + insultDict[myGameState.lastInsultGivenId].retort);
+				i++;
+			}
+			
+			// the other options are chosen at random from the list we know
+			else {
+				randOpt = Random.Range(0, unused.Count);
+				int chosen = unused[randOpt];
+				options[i].GetComponent<Text>().text = insultDict[chosen].retort;
+				//Debug.Log("SetupRetortDialogOptions: setting option " + i + " = " + insultDict[chosen].retort);
+				usedAlready.Add(chosen);
+				unused.Remove(chosen);
+				i++;
+
+				//randOpt = Random.Range(0, knownRetorts.Count);
+				//int chosen = knownRetorts[randOpt];
+
+				/*
+				if (!usedAlready.Contains(chosen)) {
+					options[i].GetComponent<Text>().text = insultDict[chosen].retort;
+					Debug.Log("SetupRetortDialogOptions: setting option " + i + " = " + insultDict[chosen].retort);
+					usedAlready.Add(chosen);
+					unused.Remove(chosen);
+					i++;
+				}
+				*/
+			}
+		}
+	}
+
+
+
+	void SetupInsultDialogOptions(int maxOptions) {
+		
+		int i = 0;
+		int j = 0;
+
+		int randOpt;
+		
+		List<int> usedAlready = new List<int>();
+
+		List<int> unused = new List<int>();
+		Debug.Log("adding " + knownInsults.Count + " items to unused");
+		for (int k = 0; k < knownInsults.Count; k++) {
+			unused.Add(knownInsults[k]);
+			Debug.Log("item " + k);
+		}
+
+		Debug.Log("SetupInsultDialogOptions: maxOptions = " + maxOptions);
+		while (i < maxOptions) {
+			Debug.Log("SetupInsultDialogOptions: in loop cycle " + i);
+			// infinite loop safety
+			j++;
+			if (j > 10) {
+				i = maxOptions;
+				break;
+			}
+
+			// put the default answer in the last place
+			if (i == maxOptions - 1) {
+				//Debug.Log("SetupInsultDialogOptions: setting option " + i + " = 'I got nothing.'");
+				options[i].GetComponent<Text>().text = "I got nothing.";
+				i++;
+			}
+			
+			// the other options are chosen at random from the list we know
+			else {
+
+				randOpt = Random.Range(0, unused.Count);
+				int chosen = unused[randOpt];
+				options[i].GetComponent<Text>().text = insultDict[chosen].insult;
+				//Debug.Log("SetupInsultDialogOptions: setting option " + i + " = " + insultDict[chosen].insult);
+				usedAlready.Add(chosen);
+				unused.Remove(chosen);
+				i++;
+
+				//randOpt = Random.Range(0, knownInsults.Count);
+				//int chosen = knownInsults[randOpt];
+
+				/*
+				if (!usedAlready.Contains(chosen)) {
+					options[i].GetComponent<Text>().text = insultDict[chosen].insult;
+					Debug.Log("SetupInsultDialogOptions: setting option " + i + " = " + insultDict[chosen].insult);
+					usedAlready.Add(chosen);
+					unused.Remove(chosen);
+					i++;
+				}
+				*/
+			}
+		}
+	}
+
+
+	void DisplayDialogOptions() {
+
+		// find number of options
+		int maxOptions;
+
+		if (myGameState.modeIsPlayerAsking) {
+			maxOptions = GetMin(knownInsults.Count + 1, MAX_OPTIONS_TOTAL);
+			SetupInsultDialogOptions(maxOptions);
+		}
+		else {
+			maxOptions = GetMin(knownRetorts.Count + 1, MAX_OPTIONS_TOTAL);
+			SetupRetortDialogOptions(maxOptions);
+		}
+
+		// WAIT FOR SETUP TO FINISH !!! ???
+		// fixed - problem was loop repeating too many times
+
+		int i = 0;
+		// show all  available options (can be less than 5, max 5)
+		for (i = 0; i < maxOptions; i++) {
+			options[i].SetActive(true);
+		}
+		// show box
+		mainScript.dialogImg.SetActive(true);
+	}
+
+
+	// Hide the dialog box
+	void HideDialogOptions() {
+		int i = 0;
+		// hide all options
+		for (i = 0; i < 5; i++) {
+			options[i].GetComponent<Text>().text = "";
+			options[i].SetActive(false);
+		}
+		// hide box
+		mainScript.dialogImg.SetActive(false);
+	}
+
+
+
+	/* GENERAL FUNCTIONS */
+
+	int GetMin(int num, int max) {
+		if (num > max) {
+			return max;
+		}
+		else {
+			return num;
+		}
 	}
 
 	void disableInteaction() {
 		mainScript.hotspotsActive = false;
 		mainScript.SetCursorInactive();
-		/*
-		if (rhino.activeInHierarchy) {
-			Debug.Log("in rhino disable");
-			rhinoHotspot = rhino.GetComponent<HotspotBehavior>();
-			rhinoBehave = rhino.GetComponent<RhinoBehavior>();
-			rhinoBehave.enabled = false;
-			rhinoHotspot.enabled = false;
-		}
-		if (idp.activeInHierarchy) {
-			Debug.Log("in idp disable");
-			idpHotspot = idp.GetComponent<HotspotBehavior>();
-			idpBehave = idp.GetComponent<IDPBehavior>();
-			Debug.Log("object idpBehave " + idpBehave + " and enabled is " + idpBehave.enabled);
-			Debug.Log("object idpHotspot " + idpHotspot + " and enabled is " + idpHotspot.enabled);
-			idpBehave.enabled = false;
-			Debug.Log("object idpBehave " + idpBehave + " and enabled is " + idpBehave.enabled);
-			idpHotspot.enabled = false;
-			Debug.Log("object idpHotspot " + idpHotspot + " and enabled is " + idpHotspot.enabled);
-		}
-		*/
 	}
-
-	void enableInteaction() {
+	
+	void enableInteraction() {
 		mainScript.hotspotsActive = true;
-		/*
-		if (rhino.activeInHierarchy) {
-			rhinoHotspot = rhino.GetComponent<HotspotBehavior>();
-			rhinoBehave = rhino.GetComponent<RhinoBehavior>();
-			rhinoBehave.enabled = true;
-			rhinoHotspot.enabled = true;
-		}
-		if (idp.activeInHierarchy) {
-			idpHotspot = idp.GetComponent<HotspotBehavior>();
-			idpBehave = idp.GetComponent<IDPBehavior>();
-			Debug.Log("object idpBehave " + idpBehave + " and enabled is " + idpBehave.enabled);
-			Debug.Log("object idpHotspot " + idpHotspot + " and enabled is " + idpHotspot.enabled);
-			idpBehave.enabled = true;
-			Debug.Log("object idpBehave " + idpBehave + " and enabled is " + idpBehave.enabled);
-			idpHotspot.enabled = true;
-			Debug.Log("object idpHotspot " + idpHotspot + " and enabled is " + idpHotspot.enabled);
-		}
-		*/
 	}
-
+	
 	void ChangeText(GameObject dialogBox, string newText) {
 		dialogBox.GetComponent<Text>().text = newText;
 	}
 
+
+	/* INTRO */
+
 	public void Intro() {
 		StartCoroutine(IntroSequence());
 	}
-
+	
 	IEnumerator IntroSequence() {
+		introPlaying = true;
 		Cursor.visible = false;
 		yield return new WaitForSeconds(1.0f);
 		gameObject.GetComponent<AudioSource>().Play();
 		yield return new WaitForSeconds(3.0f);
 		playerWords.GetComponent<Text>().text = "At last, I’ve arrived in the great city of Aspersia!";
-		yield return new WaitForSeconds(2.5f);
+		yield return new WaitForSeconds(2.8f);
 		playerWords.GetComponent<Text>().text = "";
 		yield return new WaitForSeconds(0.8f);
 		playerWords.GetComponent<Text>().text = "Here lives the great master of insults, the one, the king.";
-		yield return new WaitForSeconds(2.5f);
+		yield return new WaitForSeconds(2.8f);
 		playerWords.GetComponent<Text>().text = "";
 		yield return new WaitForSeconds(0.8f);
-		playerWords.GetComponent<Text>().text = "To this day, many have challenged him. None have prevailed.";
-		yield return new WaitForSeconds(2.5f);
+		playerWords.GetComponent<Text>().text = "Many have challenged him. To this day, none have prevailed.";
+		yield return new WaitForSeconds(2.8f);
 		playerWords.GetComponent<Text>().text = "";
 		yield return new WaitForSeconds(0.8f);
 		playerWords.GetComponent<Text>().text = "I plan to change that.";
 		yield return new WaitForSeconds(2.5f);
 		playerWords.GetComponent<Text>().text = "";
 		yield return new WaitForSeconds(1.0f);
-		mainScript.bg.SetActive(true);
-		mainScript.idp.SetActive(true);
-		mainScript.sign.SetActive(true);
 		Cursor.visible = true;
+		introPlaying = false;
+		
+		mainScript.bg.GetComponent<SpriteRenderer>().enabled = true;
+		mainScript.idp.GetComponent<SpriteRenderer>().enabled = true;
+		mainScript.sign.GetComponent<SpriteRenderer>().enabled = true;
+		
+		mainScript.idp.GetComponent<PolygonCollider2D>().enabled = true;
+		
+		yield return new WaitForSeconds(1.0f);
+		mainScript.sign.GetComponent<FlashSign>().InitSign();
 	}
 
-	public void FirstRhinoDialog() {
-		StartCoroutine(FirstRhinoSequence());
-	}
 
-	public void RhinoDialog() {
-		StartCoroutine(RhinoSequence());
-	}
+	/* IDP */
+
 
 	public void FirstIDPDialog() {
-		StartCoroutine(FirstIDPSequence());
+		StartCoroutine(IDPSequence(true));
 	}
-
+	
 	public void IDPDialog() {
-		StartCoroutine(IDPSequence());
+		StartCoroutine(IDPSequence(false));
 	}
 
-	IEnumerator RhinoSequence() {
-		disableInteaction();
-		ChangeText(rhinoWords, "Coming back for more?");
-		yield return new WaitForSeconds(2.5f);
-		ChangeText(rhinoWords, "");
-		RandomRhinoInsult();
+	void setGameModeRandom(float chancePlayerStarts) {
+		int num = Random.Range(0, 10);
+		float prob = (float) (num);
+
+		/*
+		Debug.Log("chancePlayerStarts = " + chancePlayerStarts);
+		Debug.Log("num = " + num);
+		Debug.Log("prob = " + prob);
+		Debug.Log("chancePlayerStarts * 10 = " + chancePlayerStarts * 10);
+		*/
+
+
+		bool oldModeIsPlayerAsking = myGameState.modeIsPlayerAsking;
+		//myGameState.modeIsPlayerAsking = !oldModeIsPlayerAsking;
+		if (oldModeIsPlayerAsking) {
+			chancePlayerStarts = 0.2f;
+		}
+		else {
+			chancePlayerStarts = 0.8f;
+		}
+		Debug.Log("chancePlayerStarts = " + chancePlayerStarts);
+
+		if (prob < chancePlayerStarts * 10 ) {
+			myGameState.modeIsPlayerAsking = true;
+		}
+		else {
+			myGameState.modeIsPlayerAsking = false;
+		}
+
+
+		Debug.Log("modeIsPlayerAsking = " + myGameState.modeIsPlayerAsking);
 	}
 
-	IEnumerator FirstRhinoSequence() {
+	IEnumerator IDPSequence(bool firstTime) {
 		disableInteaction();
-		ChangeText(rhinoWords, "Your insults can’t harm me, I have the Hide of the Rhinoceros!");
-		yield return new WaitForSeconds(2.5f);
-		ChangeText(rhinoWords, "");
-		RandomRhinoInsult();
+		if (firstTime) {
+			ChangeText(rhinoWords, "Welcome to Insult Duelling Practice 2.0.");
+			yield return new WaitForSeconds(2.0f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+			ChangeText(rhinoWords, "Generating random personality… Let’s begin!");
+			yield return new WaitForSeconds(2.0f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+
+			// first time IDP always starts
+			myGameState.modeIsPlayerAsking = false;
+			RandomIDPInsult();
+		}
+		else {
+			ChangeText(rhinoWords, "Let's begin!");
+			yield return new WaitForSeconds(2.5f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+
+			// randomly decide who starts
+			setGameModeRandom(0.6f);
+
+			if (myGameState.modeIsPlayerAsking) {
+				DisplayDialogOptions();
+			}
+			else {
+				RandomIDPInsult();
+			}
+		}
 	}
 
-	IEnumerator IDPSequence() {
-		disableInteaction();
-		ChangeText(rhinoWords, "Let's begin!");
+	void RandomIDPInsult() {
+
+		int randInt;
+		int chosen;
+
+		int randKnow = Random.Range(0, 10);
+		if (randKnow < 8) {
+
+			if (unknownInsults.Count > 0) {
+				randInt = Random.Range(0, unknownInsults.Count);
+				//Debug.Log("randInt = " + randInt);
+				//Debug.Log("unknownInsults.Count = " + unknownInsults.Count);
+				chosen = unknownInsults[randInt];
+			}
+			else {
+				randInt = Random.Range(0, knownInsults.Count);
+				//Debug.Log("randInt = " + randInt);
+				//Debug.Log("knownInsults.Count = " + knownInsults.Count);
+				chosen = knownInsults[randInt];
+			}
+		}
+		else {
+			if (knownInsults.Count > 0) {
+				randInt = Random.Range(0, knownInsults.Count);
+				//Debug.Log("randInt = " + randInt);
+				//Debug.Log("knownInsults.Count = " + knownInsults.Count);
+				chosen = knownInsults[randInt];
+			}
+			else {
+				randInt = Random.Range(0, unknownInsults.Count);
+				//Debug.Log("randInt = " + randInt);
+				//Debug.Log("unknownInsults.Count = " + unknownInsults.Count);
+				chosen = unknownInsults[randInt];
+			}
+		}
+
+		//int randInt = Random.Range(1, numberOfInsults + 1);
+
+		myGameState.lastInsultGivenId = chosen;
+		StartCoroutine(RandomInsultSequence(insultDict[chosen].insult));
+		if (!knownInsults.Contains(chosen)) {
+			knownInsults.Add(chosen);
+			unknownInsults.Remove(chosen);
+		}
+	}
+	
+	IEnumerator RandomInsultSequence(string insult) {
+		ChangeText(rhinoWords, insult);
 		yield return new WaitForSeconds(2.5f);
 		ChangeText(rhinoWords, "");
-		RandomIDPInsult();
+		yield return new WaitForSeconds(0.5f);
+		DisplayDialogOptions();
 	}
 
-	IEnumerator FirstIDPSequence() {
+
+	/* RHINO */
+
+
+	public void FirstRhinoDialog() {
+		StartCoroutine(RhinoSequence(true));
+	}
+	
+	public void RhinoDialog() {
+		StartCoroutine(RhinoSequence(false));
+	}
+
+	IEnumerator RhinoSequence(bool firstTime) {
 		disableInteaction();
-		Debug.Log("disabled interaction");
-		ChangeText(rhinoWords, "Welcome to Insult Duelling Practice 2.0.");
-		yield return new WaitForSeconds(2.5f);
-		ChangeText(rhinoWords, "");
-		yield return new WaitForSeconds(0.8f);
-		ChangeText(rhinoWords, "Generating random personality… Let’s begin!");
-		yield return new WaitForSeconds(2.5f);
-		ChangeText(rhinoWords, "");
-		RandomIDPInsult();
+		if (firstTime) {
+			ChangeText(rhinoWords, "Your insults can’t harm me, I have the Hide Of The Rhinoceros(tm)!");
+			yield return new WaitForSeconds(2.7f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+			
+			// rhino always starts
+			RandomRhinoInsult();
+		}
+		else {
+			ChangeText(rhinoWords, "Coming back for more?");
+			yield return new WaitForSeconds(2.5f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+			
+			// rhino always starts
+			RandomRhinoInsult();
+		}
 	}
 
 
 	void RandomRhinoInsult() {
-		randInt = Random.Range(1, numberOfInsults + 1);
-		StartCoroutine(RandomInsultSequence(insultDict[randInt].masterInsult, randInt));
+
+		int chosen;
+
+		myGameState.modeIsPlayerAsking = false;
+
+		chosen = Random.Range(1, numberOfInsults + 1);
+		
+		myGameState.lastInsultGivenId = chosen;
+		StartCoroutine(RandomInsultSequence(insultDict[chosen].masterInsult));
 	}
 
-	void RandomIDPInsult() {
-		randInt = Random.Range(1, numberOfInsults + 1);
-		Debug.Log("random insult chosen " + randInt);
-		StartCoroutine(RandomInsultSequence(insultDict[randInt].insult, randInt));
-		if (!knownInsults.Contains(randInt)) {
-			knownInsults.Add(randInt);
+
+
+	/* CHECK BOSS TIME */
+
+	void checkIfReadyForMaster() {
+		Debug.Log("knownRetorts.Count = " + knownRetorts.Count);
+		Debug.Log("numberOfInsults = " + knownRetorts.Count);
+		if (knownRetorts.Count == numberOfInsults) {
+			myGameState.askerIsRhino = true;
+			StartCoroutine(PlayerReadyForMaster());
 		}
 	}
 
-	IEnumerator RandomInsultSequence(string insult, int insultId) {
-		ChangeText(rhinoWords, insult);
+	IEnumerator PlayerReadyForMaster() {
+		ChangeText(playerWords, "I have learnt much. The master will fall today, I’m sure.");
 		yield return new WaitForSeconds(2.5f);
-		ChangeText(rhinoWords, "");
-		ShowRetortDialogOptions(insultId);
+		ChangeText(playerWords, "");
+		yield return new WaitForSeconds(0.5f);
+		ChangeText(playerWords, "Summon the insult master! I challenge him to a duel.");
+		yield return new WaitForSeconds(2.5f);
+		ChangeText(playerWords, "");
+		yield return new WaitForSeconds(0.5f);
+
+		// Hide the IDP, show the rhino
+
+		mainScript.idp.GetComponent<SpriteRenderer>().enabled = false;
+		mainScript.idp.GetComponent<PolygonCollider2D>().enabled = false;
+
+		mainScript.rhino.GetComponent<SpriteRenderer>().enabled = true;
+		mainScript.rhino.GetComponent<PolygonCollider2D>().enabled = true;
+
+		// play a sound
+		mainScript.rhino.GetComponent<AudioSource>().Play();
+
 	}
+
+
+	/* PLAYER SPEECH */
 
 	public void PlayerSpeak(string text) {
-		StartCoroutine(PlayerRetortSequence(text));
+		if (myGameState.modeIsPlayerAsking) {
+			StartCoroutine(PlayerAskSequence(text));
+		}
+		else {
+			if (myGameState.askerIsRhino) {
+				StartCoroutine(PlayerVsRhinoRetortSequence(text));
+			}
+			else {
+				StartCoroutine(PlayerRetortSequence(text));
+			}
+		}
 	}
-
-	IEnumerator PlayerRetortSequence(string text) {
+	
+	IEnumerator PlayerAskSequence(string text) {
+		mainScript.SetCursorInactive();
 		HideDialogOptions();
 		ChangeText(playerWords, text);
 		yield return new WaitForSeconds(2.5f);
 		ChangeText(playerWords, "");
-		enableInteaction();
+		yield return new WaitForSeconds(0.5f);
+		answerPlayerInsult(0.8f);
 	}
 
-	void ShowRetortDialogOptions(int insultId) {
-		ShowDialogOptions(insultId, true);
-	}
+	IEnumerator PlayerVsRhinoRetortSequence(string text) {
+		mainScript.SetCursorInactive();
+		HideDialogOptions();
+		ChangeText(playerWords, text);
+		yield return new WaitForSeconds(2.5f);
+		ChangeText(playerWords, "");
+		yield return new WaitForSeconds(0.5f);
+		if (myGameState.lastInsultGivenId == myGameState.playerLastRetortGivenId) {
+			myGameState.numTimesBeatRhino = myGameState.numTimesBeatRhino + 1;
+			ChangeText(rhinoWords, "That was an easy one..");
+			yield return new WaitForSeconds(2.5f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
 
-	void ShowInsultDialogOptions() {
-		ShowDialogOptions(0, false);
-	}
+			if (myGameState.numTimesBeatRhino == 3) {
+				// victory!
+				ChangeText(playerWords, "I win! I’m the new master!");
+				yield return new WaitForSeconds(2.5f);
+				ChangeText(playerWords, "");
+				yield return new WaitForSeconds(0.5f);
+				ChangeText(rhinoWords, "Hmm...");
+				yield return new WaitForSeconds(1.5f);
+				ChangeText(rhinoWords, "");
+				yield return new WaitForSeconds(0.5f);
+				ChangeText(rhinoWords, "Oh thank goodness. I’m free of this punishment. Enjoy your new life, kid.");
+				yield return new WaitForSeconds(3.2f);
+				ChangeText(rhinoWords, "");
+				yield return new WaitForSeconds(0.5f);
 
-	void ShowDialogOptions(int insultId, bool isRetortMode) {
+				// game over
+				gameOver = true;
 
-		int i = 0;
-		int j = 0;
+				// hide the rhino
+				mainScript.rhino.GetComponent<SpriteRenderer>().enabled = false;
+				mainScript.rhino.GetComponent<PolygonCollider2D>().enabled = false;
 
-		int randPosCorrect = -1;
-		int randOpt;
+				yield return new WaitForSeconds(1.5f);
 
-		List<int> usedAlready = new List<int>();
-
-		int maxOptions;
-
-		if (isRetortMode) {
-			maxOptions = knownRetorts.Count + 1;
-		}
-		else {
-			maxOptions = knownInsults.Count + 1;
-		}
-
-		Debug.Log("Number of options " + maxOptions);
-
-		if (maxOptions > 5) {
-			maxOptions = 5;
-			Debug.Log("Number of options changed to " + maxOptions);
-		}
+				// play a sound?
 
 
-		if (isRetortMode) {
-			// last option is always give up
-			randPosCorrect = Random.Range(0, maxOptions - 1);
-		}
-		else {
-			randPosCorrect = -1;
-		}
-		Debug.Log("correct answer pos " + randPosCorrect);
+				// show the victory screen + menu
 
-		while (i < maxOptions) {
-			// infinite loop safety
-			j++;
-			Debug.Log("In loop cycle " + j);
-			if (j > 10) {
-				i = maxOptions;
-				break;
+				menuBg.SetActive(true);
+				menuVicText.SetActive(true);
+				menuText.SetActive(true);
+				menuStartButton.SetActive(true);
+				menuQuitButton.SetActive(true);
+
 			}
-			
-			if (i == maxOptions - 1) {
-				if (isRetortMode) {
-					options[i].GetComponent<Text>().text = "I give up.";
-					i++;
-				}
-				else {
-					options[i].GetComponent<Text>().text = "I got nothing.";
-					i++;
-				}
-			}
-			
-			else if ((i == randPosCorrect) && (isRetortMode)) {
-				if (knownRetorts.Contains(insultId)) {
-					options[i].GetComponent<Text>().text = insultDict[insultId].retort;
-					usedAlready.Add(insultId);
-					i++;
-				}
-			}
-			
-			// the other options are random
 			else {
-				randOpt = Random.Range(1, numberOfInsults);
-				if (isRetortMode) {
-					if ((randOpt != insultId) &&
-					    (knownRetorts.Contains(randOpt)) &&
-					    (!usedAlready.Contains(randOpt))) {
-						options[i].GetComponent<Text>().text = insultDict[randOpt].retort;
-						usedAlready.Add(randOpt);
-						i++;
-					}
-				}
-				else {
-					if ((knownInsults.Contains(randOpt)) &&
-					    (!usedAlready.Contains(randOpt))) {
-						options[i].GetComponent<Text>().text = insultDict[randOpt].insult;
-						usedAlready.Add(randOpt);
-						i++;
-					}
-				}
+				// start a new insult with the rhino right away
+				RandomRhinoInsult();
 			}
 		}
-
-		
-		i = 0;
-		for (i = 0; i < maxOptions; i++) {
-			options[i].SetActive(true);
+		else {
+			myGameState.numTimesBeatRhino = 0;
+			ChangeText(rhinoWords, "Leave, scoundrel, you are defeated.");
+			yield return new WaitForSeconds(2.2f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
 		}
-
+		enableInteraction();
 	}
 
-	void HideDialogOptions() {
-		int i = 0;
-		for (i = 0; i < 5; i++) {
-			options[i].GetComponent<Text>().text = "";
-			options[i].SetActive(false);
+	IEnumerator PlayerRetortSequence(string text) {
+		mainScript.SetCursorInactive();
+		HideDialogOptions();
+		ChangeText(playerWords, text);
+		yield return new WaitForSeconds(2.5f);
+		ChangeText(playerWords, "");
+		yield return new WaitForSeconds(0.5f);
+		if (myGameState.lastInsultGivenId == myGameState.playerLastRetortGivenId) {
+			ChangeText(rhinoWords, "You win!");
+			yield return new WaitForSeconds(2.0f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+		}
+		else {
+			ChangeText(rhinoWords, "I win!");
+			yield return new WaitForSeconds(2.0f);
+			ChangeText(rhinoWords, "");
+			yield return new WaitForSeconds(0.5f);
+		}
+		enableInteraction();
+		checkIfReadyForMaster();
+	}
+
+
+	void answerPlayerInsult(float chanceCorrectAnswer) {
+
+		int num = Random.Range(0, 10);
+		float prob = (float) (num);
+
+		Debug.Log("playerLastInsultGivenId = " + myGameState.playerLastInsultGivenId);
+
+		if (myGameState.playerLastInsultGivenId == -1) {
+			StartCoroutine(DefeatSequence("Can't you do any better?"));
+		}
+		else {
+			if (prob < chanceCorrectAnswer * 10) {
+				StartCoroutine(DefeatSequence(insultDict[myGameState.playerLastInsultGivenId].retort));
+				if (!knownRetorts.Contains(myGameState.playerLastInsultGivenId)) {
+					knownRetorts.Add(myGameState.playerLastInsultGivenId);
+				}
+			}
+			else {
+				StartCoroutine(VictorySequence());
+			}
 		}
 	}
 
-	void endDialog() {
-		enableInteaction();
+	IEnumerator DefeatSequence(string text) {
+		ChangeText(rhinoWords, text);
+		yield return new WaitForSeconds(2.5f);
+		ChangeText(rhinoWords, "");
+		yield return new WaitForSeconds(0.5f);
+		ChangeText(rhinoWords, "I win..");
+		yield return new WaitForSeconds(2.0f);
+		ChangeText(rhinoWords, "");
+		yield return new WaitForSeconds(0.5f);
+		enableInteraction();
+		checkIfReadyForMaster();
 	}
+
+	IEnumerator VictorySequence() {
+		ChangeText(rhinoWords, "You win..");
+		yield return new WaitForSeconds(2.0f);
+		ChangeText(rhinoWords, "");
+		yield return new WaitForSeconds(0.5f);
+		enableInteraction();
+		checkIfReadyForMaster();
+	}
+
+
 
 }
